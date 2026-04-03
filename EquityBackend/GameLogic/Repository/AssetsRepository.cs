@@ -17,6 +17,14 @@ public class Asset
     public bool IsActive { get; set; }
 }
 
+public class AssetRelation
+{
+    public string SourceAsset { get; set; }
+    public string TargetAsset { get; set; }
+    public float PositiveWeight { get; set; }
+    public float NegativeWeight { get; set; }
+}
+
 public class AssetsRepository
 {
     
@@ -30,6 +38,14 @@ public class AssetsRepository
         _connectionString = connectionString;
         _db = db;
         _trx = trx;
+    }
+
+    public async Task<List<AssetRelation>> GetRelationAsync(string sourceAsset, string targetAsset)
+    {
+        string sql = @"
+SELECT * FROM Assets WHERE (source_asset = @source_asset) AND (target_asset = @target_asset);";
+        return (List<AssetRelation>)await _db.QueryAsync<AssetRelation>(sql,
+            new { sourceAsset = sourceAsset, targetAsset = targetAsset }, transaction: _trx);
     }
 
     public async Task<Asset> GetAssetAsync(string ticker)

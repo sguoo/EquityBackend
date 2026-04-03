@@ -7,17 +7,40 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0205dfeb-ee81-46ae-a05f-05b0584de838" name="변경" comment="" />
+    <list default="true" id="0205dfeb-ee81-46ae-a05f-05b0584de838" name="변경" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.EquityBackend/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.EquityBackend/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EquityBackend.sln.DotSettings.user" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend.sln.DotSettings.user" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EquityBackend/GameLogic/MatchingEngine.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/GameLogic/MatchingEngine.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EquityBackend/GameLogic/Repository/AssetsRepository.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/GameLogic/Repository/AssetsRepository.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfo.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfoInputs.cache" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="HighlightingSettingsPerFile">
-    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/f3b48bf2658e488a9555be80bc1807222a4908/06/76c214c5/IDbConnection.cs" root0="FORCE_HIGHLIGHTING" />
-    <setting file="mock://C:/Users/user/RiderProjects/EquityBackend/EquityBackend/GameLogic/Repository/UserRepository.cs" root0="SKIP_HIGHLIGHTING" />
-    <setting file="mock://C:/Users/user/RiderProjects/EquityBackend/EquityBackend/GameLogic/Repository/UserRepository.cs" root0="SKIP_HIGHLIGHTING" />
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;sguoo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/sguoo/EquityBackend.git&quot;,
+    &quot;accountId&quot;: &quot;f41e2950-d2bc-4c3d-b95a-72491d760aeb&quot;
+  }
+}</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/6d4ba1ed3d104e0f86b20bce50c16c3c26908/21/75a29ce3/Channel`1.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/f3b48bf2658e488a9555be80bc1807222a4908/06/76c214c5/IDbConnection.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="file://$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs" root0="SKIP_HIGHLIGHTING" />
+  </component>
+  <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
   <component name="ProblemsViewState">
     <option name="selectedTabId" value="CurrentFile" />
   </component>
@@ -25,23 +48,26 @@
   &quot;associatedIndex&quot;: 7
 }</component>
   <component name="ProjectId" id="3AmBVGcjDnh0JNIvh5B29pCS6vg" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;.NET 프로젝트.EquityBackend.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;configurable.group.editor&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    ".NET 프로젝트.EquityBackend.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "configurable.group.editor",
+    "vue.rearranger.settings.migration": "true"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="EquityBackend" type="DotNetProject" factoryName=".NET Project">
       <option name="EXE_PATH" value="" />
@@ -76,14 +102,42 @@
       <workItem from="1773545315292" duration="55252000" />
       <workItem from="1773964227613" duration="10187000" />
       <workItem from="1774224142298" duration="12852000" />
+      <workItem from="1774568723414" duration="7092000" />
+      <workItem from="1774835196604" duration="9375000" />
+      <workItem from="1775005447160" duration="10000" />
+      <workItem from="1775016494602" duration="10004000" />
+      <workItem from="1775174535031" duration="6637000" />
     </task>
+    <task id="LOCAL-00001" summary="feat: First Commit">
+      <option name="closed" value="true" />
+      <created>1774587303229</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1774587303229</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
+  <component name="UnityCheckinConfiguration" checkUnsavedScenes="true" />
   <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
   <component name="VcsManagerConfiguration">
     <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+    <MESSAGE value="feat: First Commit" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: First Commit" />
   </component>
 </project>

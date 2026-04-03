@@ -25,6 +25,9 @@ public class AssetTickerInfo
 
 public class MatchingEngine
 {
+    public Dictionary<string, List<AssetRelation>> _relations = new Dictionary<string, List<AssetRelation>>();
+    public Dictionary<string, long> _lastPrices = new Dictionary<string, long>();
+    
     private readonly Channel<TradeReceipt> _tradeChannel = Channel.CreateUnbounded<TradeReceipt>();
     private readonly Dictionary<string, OrderBook> _orderBooks = new Dictionary<string, OrderBook>();
     private Dictionary<string, AssetTickerInfo> _tickers = new Dictionary<string, AssetTickerInfo>();
