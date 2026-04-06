@@ -7,14 +7,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0205dfeb-ee81-46ae-a05f-05b0584de838" name="변경" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.EquityBackend/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.EquityBackend/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/EquityBackend.sln.DotSettings.user" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend.sln.DotSettings.user" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/EquityBackend/GameLogic/MatchingEngine.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/GameLogic/MatchingEngine.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/EquityBackend/GameLogic/Repository/AssetsRepository.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/GameLogic/Repository/AssetsRepository.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfo.cs" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfo.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfoInputs.cache" beforeDir="false" afterPath="$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/EquityBackend.AssemblyInfoInputs.cache" afterDir="false" />
-    </list>
+    <list default="true" id="0205dfeb-ee81-46ae-a05f-05b0584de838" name="변경" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -38,6 +31,7 @@
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/6d4ba1ed3d104e0f86b20bce50c16c3c26908/21/75a29ce3/Channel`1.cs" root0="FORCE_HIGHLIGHTING" />
     <setting file="file://$APPLICATION_CONFIG_DIR$/resharper-host/DecompilerCache/decompiler/f3b48bf2658e488a9555be80bc1807222a4908/06/76c214c5/IDbConnection.cs" root0="FORCE_HIGHLIGHTING" />
+    <setting file="mock://C:/Users/user/RiderProjects/EquityBackend/EquityBackend/GameLogic/Repository/AssetsRepository.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/EquityBackend/obj/Debug/net10.0/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs" root0="SKIP_HIGHLIGHTING" />
   </component>
   <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
@@ -106,7 +100,7 @@
       <workItem from="1774835196604" duration="9375000" />
       <workItem from="1775005447160" duration="10000" />
       <workItem from="1775016494602" duration="10004000" />
-      <workItem from="1775174535031" duration="6637000" />
+      <workItem from="1775174535031" duration="7457000" />
     </task>
     <task id="LOCAL-00001" summary="feat: First Commit">
       <option name="closed" value="true" />
@@ -116,7 +110,15 @@
       <option name="project" value="LOCAL" />
       <updated>1774587303229</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="czx">
+      <option name="closed" value="true" />
+      <created>1775200023681</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1775200023681</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -138,6 +140,7 @@
   <component name="VcsManagerConfiguration">
     <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
     <MESSAGE value="feat: First Commit" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: First Commit" />
+    <MESSAGE value="czx" />
+    <option name="LAST_COMMIT_MESSAGE" value="czx" />
   </component>
 </project>

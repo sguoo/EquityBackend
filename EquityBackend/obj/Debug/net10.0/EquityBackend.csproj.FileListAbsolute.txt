@@ -18,3 +18,4 @@ C:\Users\user\RiderProjects\EquityBackend\EquityBackend\obj\Debug\net10.0\refint
 C:\Users\user\RiderProjects\EquityBackend\EquityBackend\obj\Debug\net10.0\EquityBackend.pdb
 C:\Users\user\RiderProjects\EquityBackend\EquityBackend\obj\Debug\net10.0\EquityBackend.genruntimeconfig.cache
 C:\Users\user\RiderProjects\EquityBackend\EquityBackend\obj\Debug\net10.0\ref\EquityBackend.dll
+C:\Users\user\RiderProjects\EquityBackend\EquityBackend\obj\Debug\net10.0\EquityBackend.sourcelink.json

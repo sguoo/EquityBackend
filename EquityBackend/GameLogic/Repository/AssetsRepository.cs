@@ -27,11 +27,11 @@ public class AssetRelation
 
 public class AssetsRepository
 {
-    
+
     private readonly string _connectionString;
     private readonly IDbConnection _db;
     private readonly IDbTransaction _trx;
-    
+
 
     public AssetsRepository(string connectionString, IDbConnection db, IDbTransaction trx)
     {
@@ -43,23 +43,36 @@ public class AssetsRepository
     public async Task<List<AssetRelation>> GetRelationAsync(string sourceAsset, string targetAsset)
     {
         string sql = @"
-SELECT * FROM Assets WHERE (source_asset = @source_asset) AND (target_asset = @target_asset);";
-        return (List<AssetRelation>)await _db.QueryAsync<AssetRelation>(sql,
-            new { sourceAsset = sourceAsset, targetAsset = targetAsset }, transaction: _trx);
+SELECT source_asset AS SourceAsset, target_asset AS TargetAsset,
+       positive_weight AS PositiveWeight, negative_weight AS NegativeWeight
+FROM asset_relations
+WHERE source_asset = @SourceAsset AND target_asset = @TargetAsset;";
+        var result = await _db.QueryAsync<AssetRelation>(sql,
+            new { SourceAsset = sourceAsset, TargetAsset = targetAsset }, transaction: _trx);
+        return result.ToList();
+    }
+
+    public async Task<IEnumerable<AssetRelation>> GetAllRelationsAsync()
+    {
+        string sql = @"
+SELECT source_asset AS SourceAsset, target_asset AS TargetAsset,
+       positive_weight AS PositiveWeight, negative_weight AS NegativeWeight
+FROM asset_relations;";
+        return await _db.QueryAsync<AssetRelation>(sql, transaction: _trx);
     }
 
     public async Task<Asset> GetAssetAsync(string ticker)
     {
         string sql = @"
 SELECT * FROM Assets WHERE ticker = @ticker;";
-        
+
         return await _db.QueryFirstOrDefaultAsync<Asset>(sql, new { ticker = ticker }, transaction: _trx);
     }
 
     public async Task<IEnumerable<Asset>> GetAssetsAsync()
     {
         string sql = @"SELECT * FROM Assets;";
-        
+
         return await _db.QueryAsync<Asset>(sql: sql, _trx);
     }
 }

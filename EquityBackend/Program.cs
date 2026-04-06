@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,8 +9,7 @@ using EquityBackend.GameLogic.Service;
 class Program
 {
     static async Task Main(string[] args)
-    { 
-        
+    {
 
         TcpListener server = null;
 
@@ -23,46 +22,49 @@ class Program
             var orderService = new OrderService(_dbManager);
             var pendingOrders = await _dbManager._orderRepo.GetAllPendingOrdersAsync();
             var orderRepo = _dbManager._orderRepo;
-            
+
             var engine = new MatchingEngine();
-            //  엔진에게 주문들을 하나씩 먹여줍니다. 
             engine.InitializeTickers(await _dbManager._assetsRepo.GetAssetsAsync());
+            engine.InitializeRelations(await _dbManager._assetsRepo.GetAllRelationsAsync());
+            engine.InitializeLastPrices();
+
             foreach (var order in pendingOrders)
             {
-                await engine.AddExistingOrder(order); 
+                await engine.AddExistingOrder(order);
             }
-            
+
             int port = 8080;
             IPAddress localAddr = IPAddress.Parse("127.0.0.1");
 
             server = new TcpListener(localAddr, port);
 
             server.Start();
-            
-                _ = Task.Run(async () =>
-                {
-                    
-                    await foreach (var receipt in engine.TradeReader.ReadAllAsync())
-                    {
-                        var tradeDbManager = new DbManager();
-                        try
-                        {
-                            await tradeDbManager.DbConnection();
-                            await tradeDbManager._tradeRepo.InsertTaskAsync(receipt);
 
-                            await tradeDbManager.CommitAsync();
-                        }
-                        catch (Exception e)
-                        {
-                            Console.WriteLine($"영수증 오류: {e.Message}");
-                            await tradeDbManager.RollbackAsync();
-                        }
-                        finally
-                        {
-                            await tradeDbManager.DisposeAsync();
-                        }
+            _ = Task.Run(async () =>
+            {
+                await foreach (var receipt in engine.TradeReader.ReadAllAsync())
+                {
+                    var tradeDbManager = new DbManager();
+                    try
+                    {
+                        await tradeDbManager.DbConnection();
+                        await tradeDbManager._tradeRepo.InsertTaskAsync(receipt);
+
+                        await tradeDbManager.CommitAsync();
                     }
-                });
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"영수증 오류: {e.Message}");
+                        await tradeDbManager.RollbackAsync();
+                    }
+                    finally
+                    {
+                        await tradeDbManager.DisposeAsync();
+                    }
+                }
+            });
+
+            _ = engine.StartValueChainScheduler();
 
             while (true)
             {
@@ -71,11 +73,7 @@ class Program
                 TcpClient client = await server.AcceptTcpClientAsync();
                 Console.WriteLine("Connection accepted");
 
-
                 _ = Task.Run((() => HandleClientAsync(client, engine)));
-
-
-
             }
         }
         catch (Exception ex)
@@ -86,18 +84,18 @@ class Program
         {
             server.Stop();
         }
-        
+
     }
 
     static async Task HandleClientAsync(TcpClient client, MatchingEngine engine)
     {
-        
+
         string data = null;
         Byte[] bytes = new Byte[1024];
         data = null;
-        
+
         NetworkStream stream = client.GetStream();
-        
+
         while (true)
         {
             try
@@ -163,7 +161,7 @@ class Program
                         }
                         catch (Exception e)
                         {
-                            
+
                             Console.WriteLine($"오류: {e.Message}");
                             //잔액부족
                             if (e.Message.Contains("존재하지 않는 종목"))
@@ -181,7 +179,7 @@ class Program
                             else
                             {
                                 returnByte = BitConverter.GetBytes(500); // 500 Server Error
-                            }                            
+                            }
                             await stream.WriteAsync(returnByte);
                             break;
                         }
