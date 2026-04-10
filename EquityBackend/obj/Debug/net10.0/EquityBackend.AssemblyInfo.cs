@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("EquityBackend")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+edea9ec8e38bc2e21d5ae41b053841ba1eabdfdb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1717ddf7bc4590f78eb719cf1b6c455c509dfcfe")]
 [assembly: System.Reflection.AssemblyProductAttribute("EquityBackend")]
 [assembly: System.Reflection.AssemblyTitleAttribute("EquityBackend")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

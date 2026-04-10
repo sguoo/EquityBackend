@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using EquityBackend.GameLogic.Service;
 
@@ -28,7 +29,7 @@ public class MatchingEngine
     public Dictionary<string, long> _lastPrices = new Dictionary<string, long>();
 
     private readonly Channel<TradeReceipt> _tradeChannel = Channel.CreateUnbounded<TradeReceipt>();
-    private readonly Dictionary<string, OrderBook> _orderBooks = new Dictionary<string, OrderBook>();
+    private readonly ConcurrentDictionary<string, OrderBook> _orderBooks = new ConcurrentDictionary<string, OrderBook>();
     private Dictionary<string, AssetTickerInfo> _tickers = new Dictionary<string, AssetTickerInfo>();
 
     // 현재가 읽기/쓰기 보호
@@ -79,16 +80,12 @@ public class MatchingEngine
             throw new Exception("Asset ticker is out of range");
         }
 
-        //호가창이 없다면 새로 만든다
-        if (!_orderBooks.ContainsKey(incomingOrder.Ticker))
-        {
-            _orderBooks[incomingOrder.Ticker] = new OrderBook(incomingOrder.Ticker);
-        }
-        var orderBook = _orderBooks[incomingOrder.Ticker];
+        var orderBook = _orderBooks.GetOrAdd(incomingOrder.Ticker, t => new OrderBook(t));
 
         MatchOrder(incomingOrder, orderBook);
 
-        if (incomingOrder.Quantity > incomingOrder.ExecutedQuantity)
+        // 시스템 주문(UserId=0)은 호가창에 남기지 않음 — 잔류 시 실제 주문과 유령 채결 발생
+        if (incomingOrder.Quantity > incomingOrder.ExecutedQuantity && incomingOrder.UserId != 0)
         {
             orderBook.AddOrder(incomingOrder);
             Console.WriteLine($"[호가 등록] {incomingOrder.Ticker} {incomingOrder.Side} 대기 등록 - 잔여수량: {incomingOrder.Quantity - incomingOrder.ExecutedQuantity}개");
@@ -156,12 +153,7 @@ public class MatchingEngine
 
     public async Task AddExistingOrder(Order order)
     {
-        if (!_orderBooks.ContainsKey(order.Ticker))
-        {
-            _orderBooks[order.Ticker] = new OrderBook(order.Ticker);
-        }
-
-        var orderBook = _orderBooks[order.Ticker];
+        var orderBook = _orderBooks.GetOrAdd(order.Ticker, t => new OrderBook(t));
         orderBook.AddOrder(order);
     }
 
