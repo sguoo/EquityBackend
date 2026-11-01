@@ -1,0 +1,31 @@
+# 빌드 산출물
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Claude Code 로컬 설정 (개인 설정 — 공유 설정은 settings.json)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# 기타
+*.log
