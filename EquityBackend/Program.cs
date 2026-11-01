@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -33,6 +34,9 @@ class Program
                 await engine.AddExistingOrder(order);
             }
 
+            // userId → NetworkStream 레지스트리 (Push 대상 관리)
+            var clients = new ConcurrentDictionary<long, NetworkStream>();
+
             int port = 8080;
             IPAddress localAddr = IPAddress.Parse("127.0.0.1");
 
@@ -66,6 +70,29 @@ class Program
 
             _ = engine.StartValueChainScheduler();
 
+            // Push 브로드캐스트 워커
+            _ = Task.Run(async () =>
+            {
+                await foreach (var payload in engine.PushReader.ReadAllAsync())
+                {
+                    // header: pushType(2) + bodyLen(4) = 6바이트
+                    var frame = new byte[6 + payload.Body.Length];
+                    BitConverter.TryWriteBytes(frame.AsSpan(0), payload.Type);
+                    BitConverter.TryWriteBytes(frame.AsSpan(2), payload.Body.Length);
+                    payload.Body.CopyTo(frame, 6);
+
+                    if (payload.TargetUserId == 0)
+                    {
+                        foreach (var (_, stream) in clients)
+                            await TrySendAsync(stream, frame);
+                    }
+                    else if (clients.TryGetValue(payload.TargetUserId, out var stream))
+                    {
+                        await TrySendAsync(stream, frame);
+                    }
+                }
+            });
+
             while (true)
             {
                 Console.WriteLine("Waiting for a connection...");
@@ -73,7 +100,7 @@ class Program
                 TcpClient client = await server.AcceptTcpClientAsync();
                 Console.WriteLine("Connection accepted");
 
-                _ = Task.Run((() => HandleClientAsync(client, engine)));
+                _ = Task.Run((() => HandleClientAsync(client, engine, clients)));
             }
         }
         catch (Exception ex)
@@ -87,15 +114,21 @@ class Program
 
     }
 
-    static async Task HandleClientAsync(TcpClient client, MatchingEngine engine)
+    static async Task TrySendAsync(NetworkStream stream, byte[] frame)
     {
+        try { await stream.WriteAsync(frame); }
+        catch { /* 끊긴 클라이언트는 무시 — 레지스트리 제거는 HandleClientAsync에서 처리 */ }
+    }
 
-        string data = null;
+    static async Task HandleClientAsync(TcpClient client, MatchingEngine engine,
+        ConcurrentDictionary<long, NetworkStream> clients)
+    {
         Byte[] bytes = new Byte[1024];
-        data = null;
-
         NetworkStream stream = client.GetStream();
+        long registeredUserId = 0;
 
+        try
+        {
         while (true)
         {
             try
@@ -106,6 +139,13 @@ class Program
                 short type = BitConverter.ToInt16(bytes, 0);
                 //userId
                 long userId = BitConverter.ToInt64(bytes, 2);
+
+                // 첫 패킷에서 클라이언트 등록
+                if (registeredUserId == 0 && userId != 0)
+                {
+                    registeredUserId = userId;
+                    clients[userId] = stream;
+                }
                 //ticker (종목)
                 string ticker = Encoding.UTF8.GetString(bytes, 10, 4);
                 //수량
@@ -196,6 +236,12 @@ class Program
                 break;
             }
         }
-        client.Close();
+        } // try
+        finally
+        {
+            if (registeredUserId != 0)
+                clients.TryRemove(registeredUserId, out _);
+            client.Close();
+        }
     }
 }

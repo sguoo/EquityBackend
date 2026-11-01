@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using System.Threading.Channels;
 using EquityBackend.GameLogic.Service;
 
@@ -15,6 +16,9 @@ public struct TradeReceipt
 }
 
 
+// TargetUserId == 0 → 전체 broadcast
+public record PushPayload(short Type, long TargetUserId, byte[] Body);
+
 public class AssetTickerInfo
 {
     public long CurrentPrice { get; set; }
@@ -29,13 +33,22 @@ public class MatchingEngine
     public Dictionary<string, long> _lastPrices = new Dictionary<string, long>();
 
     private readonly Channel<TradeReceipt> _tradeChannel = Channel.CreateUnbounded<TradeReceipt>();
+    private readonly Channel<PushPayload> _pushChannel = Channel.CreateUnbounded<PushPayload>();
     private readonly ConcurrentDictionary<string, OrderBook> _orderBooks = new ConcurrentDictionary<string, OrderBook>();
     private Dictionary<string, AssetTickerInfo> _tickers = new Dictionary<string, AssetTickerInfo>();
+
+    // 종목별 전용 주문 대기열 — 한 종목의 호가창은 항상 전용 워커 1개만 수정한다
+    private readonly ConcurrentDictionary<string, Channel<OrderWorkItem>> _tickerQueues =
+        new ConcurrentDictionary<string, Channel<OrderWorkItem>>();
+
+    // 대기열 항목 — Completion은 주문이 실제로 처리된 뒤 호출자를 깨우기 위한 것
+    private sealed record OrderWorkItem(Order Order, TaskCompletionSource<bool> Completion);
 
     // 현재가 읽기/쓰기 보호
     private readonly ReaderWriterLockSlim _priceLock = new ReaderWriterLockSlim();
 
     public ChannelReader<TradeReceipt> TradeReader => _tradeChannel.Reader;
+    public ChannelReader<PushPayload> PushReader => _pushChannel.Reader;
 
     public void InitializeTickers(IEnumerable<Asset> assetFromDb)
     {
@@ -49,6 +62,43 @@ public class MatchingEngine
                 Base = asset.BasePrice,
             };
             _tickers[asset.Ticker] = tickerInfo;
+            StartTickerWorker(asset.Ticker);
+        }
+    }
+
+    // 종목당 대기열 1개 + 워커 1개. 중복 호출 시 TryAdd 실패로 워커가 늘어나지 않는다.
+    private void StartTickerWorker(string ticker)
+    {
+        var channel = Channel.CreateUnbounded<OrderWorkItem>(
+            new UnboundedChannelOptions { SingleReader = true });
+
+        if (!_tickerQueues.TryAdd(ticker, channel)) return;
+
+        _ = Task.Run(() => RunTickerWorker(ticker, channel.Reader));
+    }
+
+    // 들어온 순서대로 하나씩 처리 — 이 메서드만이 해당 종목 호가창의 유일한 수정자
+    private async Task RunTickerWorker(string ticker, ChannelReader<OrderWorkItem> reader)
+    {
+        try
+        {
+            await foreach (var item in reader.ReadAllAsync())
+            {
+                try
+                {
+                    ProcessOrderCore(item.Order);
+                    item.Completion.TrySetResult(true);
+                }
+                catch (Exception ex)
+                {
+                    // 주문 하나의 실패가 대기열을 멈추지 않도록 호출자에게만 전달
+                    item.Completion.TrySetException(ex);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OrderQueue] {ticker} 워커 종료: {ex.Message}");
         }
     }
 
@@ -70,7 +120,24 @@ public class MatchingEngine
             _lastPrices[kvp.Key] = kvp.Value.CurrentPrice;
     }
 
-    public async Task ProcessOrder(Order incomingOrder)
+    // 호가창을 직접 건드리지 않고 종목 전용 대기열에 넣는다.
+    // 반환 Task는 그 주문이 실제로 처리된 뒤 완료되므로, 호출자의 예외/응답 코드 처리는 그대로 유지된다.
+    public Task ProcessOrder(Order incomingOrder)
+    {
+        if (!_tickerQueues.TryGetValue(incomingOrder.Ticker, out var queue))
+            throw new KeyNotFoundException($"등록되지 않은 종목: {incomingOrder.Ticker}");
+
+        // RunContinuationsAsynchronously — 호출자의 후속 작업(DB 커밋 등)이 워커 스레드를 붙잡지 않도록
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!queue.Writer.TryWrite(new OrderWorkItem(incomingOrder, completion)))
+            throw new InvalidOperationException($"주문 대기열 쓰기 실패: {incomingOrder.Ticker}");
+
+        return completion.Task;
+    }
+
+    // 종목 전용 워커에서만 호출된다 — 호가창 수정은 전부 이 안에서만 일어난다
+    private void ProcessOrderCore(Order incomingOrder)
     {
         AssetTickerInfo assetTickerInfo = _tickers[incomingOrder.Ticker];
 
@@ -82,17 +149,25 @@ public class MatchingEngine
 
         var orderBook = _orderBooks.GetOrAdd(incomingOrder.Ticker, t => new OrderBook(t));
 
-        MatchOrder(incomingOrder, orderBook);
-
-        // 시스템 주문(UserId=0)은 호가창에 남기지 않음 — 잔류 시 실제 주문과 유령 채결 발생
-        if (incomingOrder.Quantity > incomingOrder.ExecutedQuantity && incomingOrder.UserId != 0)
+        // 워커끼리는 대기열로 직렬화되지만, ValueChain 틱의 호가창 읽기와는 이 락으로 분리한다
+        lock (orderBook.SyncRoot)
         {
-            orderBook.AddOrder(incomingOrder);
-            Console.WriteLine($"[호가 등록] {incomingOrder.Ticker} {incomingOrder.Side} 대기 등록 - 잔여수량: {incomingOrder.Quantity - incomingOrder.ExecutedQuantity}개");
+            MatchOrder(incomingOrder, orderBook);
+
+            // 시스템 주문(UserId=0)은 호가창에 남기지 않음 — 잔류 시 실제 주문과 유령 채결 발생
+            if (incomingOrder.Quantity > incomingOrder.ExecutedQuantity && incomingOrder.UserId != 0)
+            {
+                orderBook.AddOrder(incomingOrder);
+                Console.WriteLine($"[호가 등록] {incomingOrder.Ticker} {incomingOrder.Side} 대기 등록 - 잔여수량: {incomingOrder.Quantity - incomingOrder.ExecutedQuantity}개");
+            }
         }
+
+        // AddOrder 뒤에 스냅샷 — 잔여 주문이 반영된 호가창을 브로드캐스트
+        _pushChannel.Writer.TryWrite(BuildOrderBookPush(incomingOrder.Ticker, orderBook));
     }
 
-    public void MatchOrder(Order incomingOrder, OrderBook orderBook)
+    // 호출자가 orderBook.SyncRoot를 이미 잡고 있어야 한다
+    private void MatchOrder(Order incomingOrder, OrderBook orderBook)
     {
         var oppsiteBook = incomingOrder.Side == OrderSide.Buy ? orderBook.Asks : orderBook.Bids;
 
@@ -136,6 +211,11 @@ public class MatchingEngine
                         SellerId = (incomingOrder.Side == OrderSide.Buy) ? makerOrder.OrderId : incomingOrder.OrderId,
                         TradeTime = DateTime.Now
                     });
+
+                    long buyerUserId  = incomingOrder.Side == OrderSide.Buy ? incomingOrder.UserId : makerOrder.UserId;
+                    long sellerUserId = incomingOrder.Side == OrderSide.Buy ? makerOrder.UserId : incomingOrder.UserId;
+                    _pushChannel.Writer.TryWrite(BuildTradePush(buyerUserId,  incomingOrder.Ticker, OrderSide.Buy,  matchPrice, tradeQty));
+                    _pushChannel.Writer.TryWrite(BuildTradePush(sellerUserId, incomingOrder.Ticker, OrderSide.Sell, matchPrice, tradeQty));
                 }
 
                 if (makerOrder.ExecutedQuantity == makerOrder.Quantity)
@@ -151,6 +231,7 @@ public class MatchingEngine
         }
     }
 
+    // 서버 기동 중(리스너 시작 전)에만 호출된다 — 워커/스케줄러와 경합하지 않으므로 대기열을 거치지 않는다
     public async Task AddExistingOrder(Order order)
     {
         var orderBook = _orderBooks.GetOrAdd(order.Ticker, t => new OrderBook(t));
@@ -261,6 +342,58 @@ public class MatchingEngine
                 _lastPrices[kvp.Key] = kvp.Value.CurrentPrice;
         }
         finally { _priceLock.ExitWriteLock(); }
+    }
+
+    // Body: ticker(4) + side(2) + matchPrice(8) + matchQty(4) = 18바이트
+    private PushPayload BuildTradePush(long targetUserId, string ticker, OrderSide side, long price, int qty)
+    {
+        var body = new byte[18];
+        Encoding.UTF8.GetBytes(ticker.PadRight(4)).CopyTo(body, 0);
+        BitConverter.TryWriteBytes(body.AsSpan(4), (short)(side == OrderSide.Buy ? 1 : 2));
+        BitConverter.TryWriteBytes(body.AsSpan(6), price);
+        BitConverter.TryWriteBytes(body.AsSpan(14), qty);
+        return new PushPayload(0x10, targetUserId, body);
+    }
+
+    // Body: ticker(4) + bidCount(4) + bids[price(8)+qty(4)]×N + askCount(4) + asks[price(8)+qty(4)]×M
+    private PushPayload BuildOrderBookPush(string ticker, OrderBook orderBook)
+    {
+        var bids = new List<(long price, int qty)>();
+        var asks = new List<(long price, int qty)>();
+
+        lock (orderBook.SyncRoot)
+        {
+            foreach (var (levelPrice, queue) in orderBook.Bids)
+            {
+                int total = queue.Sum(o => o.Quantity - o.ExecutedQuantity);
+                if (total > 0) bids.Add((levelPrice, total));
+            }
+            foreach (var (levelPrice, queue) in orderBook.Asks)
+            {
+                int total = queue.Sum(o => o.Quantity - o.ExecutedQuantity);
+                if (total > 0) asks.Add((levelPrice, total));
+            }
+        }
+
+        int bodyLen = 4 + 4 + bids.Count * 12 + 4 + asks.Count * 12;
+        var body = new byte[bodyLen];
+        int offset = 0;
+
+        Encoding.UTF8.GetBytes(ticker.PadRight(4)).CopyTo(body, offset); offset += 4;
+        BitConverter.TryWriteBytes(body.AsSpan(offset), bids.Count); offset += 4;
+        foreach (var (p, q) in bids)
+        {
+            BitConverter.TryWriteBytes(body.AsSpan(offset), p); offset += 8;
+            BitConverter.TryWriteBytes(body.AsSpan(offset), q); offset += 4;
+        }
+        BitConverter.TryWriteBytes(body.AsSpan(offset), asks.Count); offset += 4;
+        foreach (var (p, q) in asks)
+        {
+            BitConverter.TryWriteBytes(body.AsSpan(offset), p); offset += 8;
+            BitConverter.TryWriteBytes(body.AsSpan(offset), q); offset += 4;
+        }
+
+        return new PushPayload(0x11, 0, body);
     }
 
     public async Task StartValueChainScheduler()
