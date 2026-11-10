@@ -28,16 +28,15 @@ VALUES (@userId, @userName);";
 
     public async Task UpdateBalance(long userId,long amount)
     {
+        // users.user_id 는 GENERATED ALWAYS identity 라서 INSERT ... ON CONFLICT 는
+        // 행 존재 여부와 상관없이 항상 실패한다(428C9). 존재하는 사용자만 갱신한다.
         const string sql = @"
-INSERT INTO users (user_id, balance)
-VALUES (@userId, @amount)
+UPDATE users SET balance = users.balance + @amount
+WHERE user_id = @userId;";
 
-ON CONFLICT (user_id)
-
-DO UPDATE
-SET balance = users.balance + @amount;";
-        
-        await _db.ExecuteAsync(sql, new { UserId = userId, Amount = amount }, transaction: _tx);
+        int affected = await _db.ExecuteAsync(sql, new { UserId = userId, Amount = amount }, transaction: _tx);
+        if (affected != 1)
+            throw new InvalidOperationException($"잔고 갱신 대상 사용자가 없습니다: {userId}");
     }
 
 
@@ -47,7 +46,9 @@ SET balance = users.balance + @amount;";
 UPDATE users SET locked_balance = users.locked_balance + @amount
 WHERE user_id = @userId;";
 
-        await _db.ExecuteAsync(sql, new { UserId = userId, Amount = amount }, transaction: _tx);
+        int affected = await _db.ExecuteAsync(sql, new { UserId = userId, Amount = amount }, transaction: _tx);
+        if (affected != 1)
+            throw new InvalidOperationException($"묶인 잔고 갱신 대상 사용자가 없습니다: {userId}");
     }
 
     public async Task<long> GetUserBalance(long userId)
