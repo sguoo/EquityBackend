@@ -46,6 +46,8 @@ public class MatchingEngine
     private readonly ConcurrentDictionary<string, Channel<OrderWorkItem>> _tickerQueues =
         new ConcurrentDictionary<string, Channel<OrderWorkItem>>();
 
+    private readonly ConcurrentDictionary<string, Task> _workerTasks = new ConcurrentDictionary<string, Task>();
+
     // 대기열 항목 — Completion은 주문이 실제로 처리된 뒤 호출자를 깨우기 위한 것
     private sealed record OrderWorkItem(Order Order, TaskCompletionSource<bool> Completion);
 
@@ -79,7 +81,20 @@ public class MatchingEngine
 
         if (!_tickerQueues.TryAdd(ticker, channel)) return;
 
-        _ = Task.Run(() => RunTickerWorker(ticker, channel.Reader));
+        _workerTasks[ticker] = Task.Run(() => RunTickerWorker(ticker, channel.Reader));
+    }
+
+    // 정상 종료: 종목 대기열을 닫고 워커가 남은 주문을 모두 처리할 때까지 기다린 뒤 체결 채널을 닫는다.
+    // 체결 채널 소비자(Program의 체결 기록 작업)는 남은 영수증을 다 쓰고 끝난다.
+    public async Task ShutdownAsync()
+    {
+        foreach (var queue in _tickerQueues.Values)
+            queue.Writer.TryComplete();
+
+        await Task.WhenAll(_workerTasks.Values);
+
+        _tradeChannel.Writer.TryComplete();
+        _pushChannel.Writer.TryComplete();
     }
 
     // 들어온 순서대로 하나씩 처리 — 이 메서드만이 해당 종목 호가창의 유일한 수정자
@@ -428,16 +443,23 @@ public class MatchingEngine
         return new PushPayload(0x11, 0, body);
     }
 
-    public async Task StartValueChainScheduler()
+    public async Task StartValueChainScheduler(CancellationToken cancellationToken = default)
     {
-        var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
-        while (await timer.WaitForNextTickAsync())
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        try
         {
-            try { await RunValueChainTick(); }
-            catch (Exception ex)
+            while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                Console.WriteLine($"[ValueChain] Tick error: {ex.Message}");
+                try { await RunValueChainTick(); }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[ValueChain] Tick error: {ex.Message}");
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 정상 종료
         }
     }
 }

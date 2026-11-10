@@ -2,17 +2,67 @@ using System;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using EquityBackend.GameLogic;
 using EquityBackend.GameLogic.Service;
 
+// 정상 종료 시 새 주문을 막고, 이미 처리 중인 주문(OrderService → ProcessOrder)이 끝나기를 기다린다.
+// TryEnter는 "증가 후 확인" 순서라 Close 이후에 통과하는 주문이 없다.
+sealed class OrderGate
+{
+    private int _inFlight;
+    private int _closed;
+
+    public bool TryEnter()
+    {
+        Interlocked.Increment(ref _inFlight);
+        if (Volatile.Read(ref _closed) == 1)
+        {
+            Interlocked.Decrement(ref _inFlight);
+            return false;
+        }
+        return true;
+    }
+
+    public void Exit() => Interlocked.Decrement(ref _inFlight);
+
+    public async Task CloseAndDrainAsync(TimeSpan timeout)
+    {
+        Interlocked.Exchange(ref _closed, 1);
+        var deadline = DateTime.UtcNow + timeout;
+        while (Volatile.Read(ref _inFlight) > 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+        if (Volatile.Read(ref _inFlight) > 0)
+            Console.WriteLine($"[Shutdown][경고] 처리 중 주문 {_inFlight}건을 기다리다 시간 초과");
+    }
+}
+
 class Program
 {
+    static readonly OrderGate OrderGate = new OrderGate();
+
     static async Task Main(string[] args)
     {
 
-        TcpListener server = null;
+        TcpListener? server = null;
+
+        // Ctrl+C(SIGINT) / SIGTERM / Ctrl+Break(SIGQUIT) → 정상 종료 절차
+        using var shutdownCts = new CancellationTokenSource();
+        using var shutdownDone = new ManualResetEventSlim(false);
+        void OnSignal(PosixSignalContext ctx)
+        {
+            ctx.Cancel = true; // 프로세스 즉시 종료를 막고 Main이 정리하게 한다
+            Console.WriteLine($"[Shutdown] {ctx.Signal} 수신 — 종료 절차 시작");
+            shutdownCts.Cancel();
+            // Windows의 창 닫기/로그오프(SIGTERM)는 핸들러가 반환되면 곧바로 종료되므로 정리를 기다린다
+            if (ctx.Signal == PosixSignal.SIGTERM)
+                shutdownDone.Wait(TimeSpan.FromSeconds(4));
+        }
+        using var sigInt  = PosixSignalRegistration.Create(PosixSignal.SIGINT,  OnSignal);
+        using var sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSignal);
+        using var sigQuit = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, OnSignal);
 
         try
         {
@@ -32,7 +82,8 @@ class Program
             server.Start();
 
             // 체결 기록 + 정산 — 영수증 1건당 트랜잭션 1개 (TradeService.SettleTradeAsync)
-            _ = Task.Run(async () =>
+            // 종료 시 채널이 닫히면 남은 영수증을 모두 쓴 뒤 끝난다
+            var tradePersistTask = Task.Run(async () =>
             {
                 await foreach (var receipt in engine.TradeReader.ReadAllAsync())
                 {
@@ -40,7 +91,7 @@ class Program
                 }
             });
 
-            _ = engine.StartValueChainScheduler();
+            var valueChainTask = engine.StartValueChainScheduler(shutdownCts.Token);
 
             // Push 브로드캐스트 워커
             _ = Task.Run(async () =>
@@ -65,15 +116,32 @@ class Program
                 }
             });
 
-            while (true)
+            try
             {
-                Console.WriteLine("Waiting for a connection...");
+                while (true)
+                {
+                    Console.WriteLine("Waiting for a connection...");
 
-                TcpClient client = await server.AcceptTcpClientAsync();
-                Console.WriteLine("Connection accepted");
+                    TcpClient client = await server.AcceptTcpClientAsync(shutdownCts.Token);
+                    Console.WriteLine("Connection accepted");
 
-                _ = Task.Run((() => HandleClientAsync(client, engine, clients)));
+                    _ = Task.Run((() => HandleClientAsync(client, engine, clients)));
+                }
             }
+            catch (OperationCanceledException) when (shutdownCts.IsCancellationRequested) { }
+
+            // ── 정상 종료 ──
+            // 1) 새 연결 차단
+            server.Stop();
+            // 2) 새 주문 차단 + 이미 들어온 주문은 매칭까지 끝나기를 기다림
+            await OrderGate.CloseAndDrainAsync(TimeSpan.FromSeconds(10));
+            // 3) 가치사슬 시스템 주문 중단
+            await valueChainTask;
+            // 4) 종목 대기열을 닫고 워커가 남은 주문을 처리하게 한 뒤 체결 채널을 닫음
+            await engine.ShutdownAsync();
+            // 5) 체결 채널에 남은 영수증을 전부 DB에 기록
+            await tradePersistTask;
+            Console.WriteLine("[Shutdown] 남은 체결 기록 완료 — 종료");
         }
         catch (Exception ex)
         {
@@ -81,7 +149,8 @@ class Program
         }
         finally
         {
-            server.Stop();
+            server?.Stop();
+            shutdownDone.Set();
         }
 
     }
@@ -147,7 +216,8 @@ class Program
         }
     }
 
-    // 일시적 DB 오류(연결 끊김 등)에 대비해 몇 번 재시도한다. 트랜잭션 단위라 재시도해도 중복 반영되지 않는다.
+    // 일시적 DB 오류(연결 끊김 등)에 대비해 몇 번 재시도한다. 실패한 시도는 트랜잭션이 롤백되므로
+    // 일부만 반영된 상태로 남지 않는다. (커밋 성공 후 응답만 유실된 경우의 재시도는 막지 못한다 — 보고서 참고)
     static async Task PersistTradeAsync(TradeReceipt receipt)
     {
         const int maxAttempts = 3;
@@ -215,6 +285,18 @@ class Program
                 int price = BitConverter.ToInt32(bytes, 18);
 
                 byte[]? returnByte;
+
+                // 종료 절차가 시작되면 DB에 주문을 쓰기 전에 거부한다 (기존 응답 코드 500 사용)
+                bool isOrder = type == 1 || type == 2;
+                if (isOrder && !OrderGate.TryEnter())
+                {
+                    Console.WriteLine("[Shutdown] 종료 중 — 새 주문 거부");
+                    await stream.WriteAsync(BitConverter.GetBytes(500));
+                    continue;
+                }
+
+                try
+                {
                 // 200 = 정상, 400 = 잔액(재화) 부족, 401 = 다른 바이트 값)
                 switch (type)
                 {
@@ -289,6 +371,11 @@ class Program
                         returnByte = BitConverter.GetBytes(401);
                         await stream.WriteAsync(returnByte);
                         throw new Exception("Unknown type");
+                }
+                }
+                finally
+                {
+                    if (isOrder) OrderGate.Exit();
                 }
             }
             catch (Exception ex)
