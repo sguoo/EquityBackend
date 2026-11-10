@@ -15,6 +15,18 @@ public class OrderService
         _dbManager = manager;
     }
     
+    // 주문 시 묶는 금액과 체결 정산 금액이 반드시 같은 규칙을 쓰도록 한 곳에 둔다
+    // (IsFractional 자산은 price * quantity 를 10,000,000 으로 나눈다 — 정수 나눗셈)
+    public const long FractionalDivisor = 10_000_000;
+
+    public static long CalculateAmount(long price, long quantity, bool isFractional)
+    {
+        long amount = price * quantity;
+        if (isFractional)
+            amount /= FractionalDivisor;
+        return amount;
+    }
+
     public async Task<Order> CreateBuyOrder(long userId, string ticker, int amount, int price)
     {
         Order newOrder = new Order 
@@ -31,16 +43,12 @@ public class OrderService
         await _dbManager.DbConnection();
         try
         {
-            long priceAmount = (long)price * amount;
             var asset = await _dbManager._assetsRepo.GetAssetAsync(ticker);
-            
+
             if (asset == null)
                 throw new AssetNotFoundException();
-            
-            if (asset.IsFractional)
-            {
-                priceAmount /= 10000000;
-            }
+
+            long priceAmount = CalculateAmount(price, amount, asset.IsFractional);
 
 
             if (await _dbManager._userRepo.GetUserBalance(userId) < priceAmount)
@@ -51,7 +59,7 @@ public class OrderService
                 throw new TickSizeException();
             await _dbManager._userRepo.UpdateLockedBalance(userId, priceAmount);
             await _dbManager._userRepo.UpdateBalance(userId, -priceAmount);
-            await _dbManager._orderRepo.InsertOrderAsync(newOrder);
+            newOrder.OrderId = await _dbManager._orderRepo.InsertOrderAsync(newOrder);
 
             await _dbManager.CommitAsync();
             return newOrder;
@@ -99,7 +107,7 @@ public class OrderService
             
             await _dbManager._inventoryRepo.UpdateLockedInventory(userId, ticker, amount);
             await _dbManager._inventoryRepo.UpdateInventory(userId, ticker, -amount);
-            await _dbManager._orderRepo.InsertOrderAsync(newOrder);
+            newOrder.OrderId = await _dbManager._orderRepo.InsertOrderAsync(newOrder);
 
             await _dbManager.CommitAsync();
             return newOrder;
