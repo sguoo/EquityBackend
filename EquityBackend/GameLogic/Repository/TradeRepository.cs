@@ -26,4 +26,30 @@ public class TradeRepository
             SellOrderId = tradeReceipt.SellOrderId, Price = tradeReceipt.Price, Amount = tradeReceipt.Quantity,
             TradeAt = tradeReceipt.TradeTime}, _trx);
     }
+
+    // 종목별 마지막 체결가 (trade_id가 가장 큰 체결)
+    public async Task<Dictionary<string, long>> GetLastPricesAsync()
+    {
+        const string sql = @"
+SELECT DISTINCT ON (ticker) ticker AS Ticker, match_price AS Price
+FROM trades
+ORDER BY ticker, trade_id DESC;";
+        var rows = await _db.QueryAsync<(string Ticker, long Price)>(sql, transaction: _trx);
+        return rows.ToDictionary(r => r.Ticker, r => r.Price);
+    }
+
+    // 주문 ID별 체결 수량 합계 (매수/매도 양쪽 컬럼 모두)
+    public async Task<Dictionary<long, int>> GetExecutedQtyByOrderAsync(long[] orderIds)
+    {
+        const string sql = @"
+SELECT order_id AS OrderId, SUM(match_qty)::int AS Qty
+FROM (
+    SELECT buy_order_id AS order_id, match_qty FROM trades WHERE buy_order_id = ANY(@Ids)
+    UNION ALL
+    SELECT sell_order_id, match_qty FROM trades WHERE sell_order_id = ANY(@Ids)
+) t
+GROUP BY order_id;";
+        var rows = await _db.QueryAsync<(long OrderId, int Qty)>(sql, new { Ids = orderIds }, _trx);
+        return rows.ToDictionary(r => r.OrderId, r => r.Qty);
+    }
 }

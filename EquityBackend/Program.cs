@@ -18,21 +18,8 @@ class Program
         {
             string connectionString = "Host=localhost;Username=postgres;Password=1020;Database=Equity";
 
-            var _dbManager = new DbManager();
-            await _dbManager.DbConnection();
-            var orderService = new OrderService(_dbManager);
-            var pendingOrders = await _dbManager._orderRepo.GetAllPendingOrdersAsync();
-            var orderRepo = _dbManager._orderRepo;
-
             var engine = new MatchingEngine();
-            engine.InitializeTickers(await _dbManager._assetsRepo.GetAssetsAsync());
-            engine.InitializeRelations(await _dbManager._assetsRepo.GetAllRelationsAsync());
-            engine.InitializeLastPrices();
-
-            foreach (var order in pendingOrders)
-            {
-                await engine.AddExistingOrder(order);
-            }
+            await RestoreEngineAsync(engine);
 
             // userId → NetworkStream 레지스트리 (Push 대상 관리)
             var clients = new ConcurrentDictionary<long, NetworkStream>();
@@ -97,6 +84,67 @@ class Program
             server.Stop();
         }
 
+    }
+
+    // 재시작 복원 — TCP 리스너 시작 전에 끝나야 한다.
+    //  1) 자산 로드  2) 현재가 = 마지막 체결가(없으면 기준가)
+    //  3) PENDING/PARTIAL 주문을 created_at 오름차순으로 조회
+    //  4) executed_qty를 trades 합계와 대조 — 다르면 경고 후 trades 기준으로 맞춤
+    //  5) 남은 수량으로 호가창에 등록
+    static async Task RestoreEngineAsync(MatchingEngine engine)
+    {
+        var db = new DbManager();
+        await db.DbConnection();
+        try
+        {
+            engine.InitializeTickers(await db._assetsRepo.GetAssetsAsync());
+            engine.InitializeRelations(await db._assetsRepo.GetAllRelationsAsync());
+
+            var lastPrices = await db._tradeRepo.GetLastPricesAsync();
+            engine.RestoreCurrentPrices(lastPrices);
+            engine.InitializeLastPrices();
+            foreach (var (ticker, price) in lastPrices)
+                Console.WriteLine($"[Restore] {ticker} 현재가 = 마지막 체결가 {price}");
+
+            var openOrders = (await db._orderRepo.GetAllPendingOrdersAsync()).ToList();
+            var tradedQty = await db._tradeRepo.GetExecutedQtyByOrderAsync(
+                openOrders.Select(o => o.OrderId).ToArray());
+
+            int restored = 0;
+            foreach (var order in openOrders)
+            {
+                int fromTrades = tradedQty.GetValueOrDefault(order.OrderId);
+                if (fromTrades != order.ExecutedQuantity)
+                {
+                    Console.WriteLine(
+                        $"[Restore][경고] order_id={order.OrderId} executed_qty={order.ExecutedQuantity} " +
+                        $"≠ trades 합계 {fromTrades} — trades 기준으로 맞춤");
+                    order.ExecutedQuantity = Math.Min(fromTrades, order.Quantity);
+                    await db._orderRepo.SetExecutedQtyAsync(order.OrderId, order.ExecutedQuantity);
+                }
+
+                if (order.ExecutedQuantity >= order.Quantity)
+                    continue; // trades 기준으로 이미 다 찬 주문은 호가창에 올리지 않는다
+
+                await engine.AddExistingOrder(order);
+                restored++;
+                Console.WriteLine(
+                    $"[Restore] order_id={order.OrderId} {order.Ticker} {order.Side} @{order.Price} " +
+                    $"잔여 {order.Quantity - order.ExecutedQuantity}/{order.Quantity}");
+            }
+            Console.WriteLine($"[Restore] 미체결 주문 {restored}건 호가창 복원");
+
+            await db.CommitAsync();
+        }
+        catch
+        {
+            await db.RollbackAsync();
+            throw;
+        }
+        finally
+        {
+            await db.DisposeAsync();
+        }
     }
 
     // 일시적 DB 오류(연결 끊김 등)에 대비해 몇 번 재시도한다. 트랜잭션 단위라 재시도해도 중복 반영되지 않는다.

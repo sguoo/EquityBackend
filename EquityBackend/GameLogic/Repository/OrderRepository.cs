@@ -100,6 +100,19 @@ RETURNING executed_qty;";
             $"체결 수량 반영 실패: order_id={orderId}, fill={fillQty} (주문 없음/이미 완료/수량 초과)");
     }
 
+    // 재시작 시 trades 합계와 다를 때 trades 기준으로 맞춘다
+    public async Task SetExecutedQtyAsync(long orderId, int executedQty)
+    {
+        const string sql = @"
+UPDATE orders
+SET executed_qty = @ExecutedQty,
+    status = CASE WHEN @ExecutedQty >= quantity THEN 'COMPLETED'
+                  WHEN @ExecutedQty > 0 THEN 'PARTIAL'
+                  ELSE 'PENDING' END
+WHERE order_id = @OrderId;";
+        await _db.ExecuteAsync(sql, new { OrderId = orderId, ExecutedQty = executedQty }, _trx);
+    }
+
     // 재시작 시 호가창 복원용 — 일부 체결(PARTIAL) 주문도 남은 수량만큼 다시 올라가야 한다
     public async Task<IEnumerable<Order>> GetAllPendingOrdersAsync()
     {

@@ -118,6 +118,22 @@ public class MatchingEngine
         }
     }
 
+    // 재시작 시 현재가를 마지막 체결가로 복원 (체결 기록이 없는 종목은 InitializeTickers의 기준가 유지)
+    // InitializeLastPrices 전에 호출해야 첫 가치사슬 틱의 delta가 0이 된다.
+    public void RestoreCurrentPrices(IReadOnlyDictionary<string, long> lastTradePrices)
+    {
+        _priceLock.EnterWriteLock();
+        try
+        {
+            foreach (var (ticker, price) in lastTradePrices)
+            {
+                if (_tickers.TryGetValue(ticker, out var info))
+                    info.CurrentPrice = price;
+            }
+        }
+        finally { _priceLock.ExitWriteLock(); }
+    }
+
     // InitializeTickers 호출 직후에 호출해야 함 — 첫 틱 delta=0 방지
     public void InitializeLastPrices()
     {
@@ -247,6 +263,7 @@ public class MatchingEngine
     }
 
     // 서버 기동 중(리스너 시작 전)에만 호출된다 — 워커/스케줄러와 경합하지 않으므로 대기열을 거치지 않는다
+    // 남은 수량(Quantity - ExecutedQuantity)은 호가창이 주문 객체에서 직접 계산한다
     public async Task AddExistingOrder(Order order)
     {
         var orderBook = _orderBooks.GetOrAdd(order.Ticker, t => new OrderBook(t));
