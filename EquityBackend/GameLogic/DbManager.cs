@@ -15,7 +15,15 @@ public class DbManager
     
     private NpgsqlConnection _connection;
     private NpgsqlTransaction _transaction;
-    
+
+    // 모든 DB 접근은 DbManager를 거치므로 여기서 한 번 설정한다.
+    // snake_case 컬럼(base_price, tick_size, is_fractional 등)을 PascalCase 속성에 매핑.
+    // 이름이 다른 컬럼(executed_qty → ExecutedQuantity, created_at → CreateAt)은 쿼리에서 별칭을 쓴다.
+    static DbManager()
+    {
+        Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
+    }
+
     public async Task DbConnection()
     {
         _connection = new NpgsqlConnection(_connectionString);

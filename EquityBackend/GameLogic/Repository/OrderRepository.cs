@@ -60,25 +60,36 @@ RETURNING order_id;";
             return await _db.QuerySingleAsync<long>(sql, parameters, _trx);
     }
     
-    //미채결 조회
+    // SELECT * 는 executed_qty / created_at 이 속성 이름과 달라 매핑되지 않으므로 별칭을 명시한다
+    private const string OrderColumns = @"
+    order_id     AS OrderId,
+    user_id      AS UserId,
+    ticker       AS Ticker,
+    side         AS Side,
+    price        AS Price,
+    quantity     AS Quantity,
+    executed_qty AS ExecutedQuantity,
+    status       AS Status,
+    created_at   AS CreateAt";
+
+    //미채결 조회 (일부 체결 포함)
     public async Task<IEnumerable<Order>> GetPendingOrderAsync(long userId)
     {
-        const string sql = @"
-SELECT * FROM Orders
-WHERE user_id = @UserId AND status = 'PENDING';"; 
-        return await _db.QueryAsync<Order>(sql, new { UserId = userId });
+        const string sql = "SELECT" + OrderColumns + @"
+FROM orders
+WHERE user_id = @UserId AND status IN ('PENDING', 'PARTIAL');";
+        return await _db.QueryAsync<Order>(sql, new { UserId = userId }, _trx);
     }
-    
+
+    // 재시작 시 호가창 복원용 — 일부 체결(PARTIAL) 주문도 남은 수량만큼 다시 올라가야 한다
     public async Task<IEnumerable<Order>> GetAllPendingOrdersAsync()
     {
-        const string sql = @"
-        SELECT * FROM Orders 
-        WHERE status = 'PENDING' 
-        ORDER BY created_at ASC;"; // 먼저 주문한 사람이 우선권을 가져야 하니까요!
-    
-        // 이 메서드는 서버 켜질 때 딱 한 번 쓰이므로 _trx(트랜잭션) 없이 
-        // 기본 연결(_db)만 사용해도 무방합니다.
-        return await _db.QueryAsync<Order>(sql);
+        const string sql = "SELECT" + OrderColumns + @"
+FROM orders
+WHERE status IN ('PENDING', 'PARTIAL')
+ORDER BY created_at ASC, order_id ASC;"; // 시간 우선 — 같은 시각이면 먼저 INSERT된 주문 우선
+
+        return await _db.QueryAsync<Order>(sql, transaction: _trx);
     }
 
 }
