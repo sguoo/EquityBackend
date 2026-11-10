@@ -81,6 +81,25 @@ WHERE user_id = @UserId AND status IN ('PENDING', 'PARTIAL');";
         return await _db.QueryAsync<Order>(sql, new { UserId = userId }, _trx);
     }
 
+    // 체결 수량 반영 — 다 찼으면 COMPLETED, 아니면 PARTIAL. 갱신 후 executed_qty를 돌려준다.
+    // 주문 수량을 넘기는 갱신(중복 체결)은 0행이 되어 예외 → 트랜잭션 롤백.
+    public async Task<int> ApplyFillAsync(long orderId, int fillQty)
+    {
+        const string sql = @"
+UPDATE orders
+SET executed_qty = executed_qty + @FillQty,
+    status = CASE WHEN executed_qty + @FillQty >= quantity THEN 'COMPLETED' ELSE 'PARTIAL' END
+WHERE order_id = @OrderId
+  AND status IN ('PENDING', 'PARTIAL')
+  AND executed_qty + @FillQty <= quantity
+RETURNING executed_qty;";
+
+        var executed = await _db.QuerySingleOrDefaultAsync<int?>(sql,
+            new { OrderId = orderId, FillQty = fillQty }, _trx);
+        return executed ?? throw new InvalidOperationException(
+            $"체결 수량 반영 실패: order_id={orderId}, fill={fillQty} (주문 없음/이미 완료/수량 초과)");
+    }
+
     // 재시작 시 호가창 복원용 — 일부 체결(PARTIAL) 주문도 남은 수량만큼 다시 올라가야 한다
     public async Task<IEnumerable<Order>> GetAllPendingOrdersAsync()
     {

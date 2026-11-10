@@ -5,13 +5,18 @@ using EquityBackend.GameLogic.Service;
 
 namespace EquityBackend.GameLogic;
 
+// 체결 1건. 시스템 주문(UserId = 0) 쪽은 주문 ID가 null이며, 그쪽 DB 갱신과 정산은 건너뛴다.
 public struct TradeReceipt
 {
     public string Ticker { get; set; }
-    public decimal Price { get; set; }
-    public decimal Quantity { get; set; }
-    public long BuyerId { get; set; }
-    public long SellerId { get; set; }
+    public long Price { get; set; }          // 체결가
+    public int Quantity { get; set; }        // 체결 수량
+    public long? BuyOrderId { get; set; }
+    public long? SellOrderId { get; set; }
+    public long BuyerUserId { get; set; }
+    public long SellerUserId { get; set; }
+    public long BuyLimitPrice { get; set; }  // 매수 주문 지정가 — 묶인 금액 해제/차액 환불 계산용
+    public long SellLimitPrice { get; set; } // 매도 주문 지정가
     public DateTime TradeTime { get; set; }
 }
 
@@ -199,23 +204,33 @@ public class MatchingEngine
 
                 Console.WriteLine($"채결 완료: {incomingOrder.Ticker} {tradeQty} 개 체결됨, 가격: {matchPrice}원");
 
-                // 시스템 주문(UserId=0)은 orders 테이블에 없으므로 trade 기록 제외
-                if (incomingOrder.UserId != 0 && makerOrder.UserId != 0)
+                // 사용자 주문이 한쪽이라도 있으면 영수증을 만든다.
+                // 시스템 주문(UserId=0)은 orders 테이블에 없으므로 그쪽 주문 ID는 null — DB 갱신/정산 제외.
+                // DB 기록은 채널 너머 백그라운드 작업이 한다(워커 안에서 DB 호출 없음).
+                var buyOrder  = incomingOrder.Side == OrderSide.Buy ? incomingOrder : makerOrder;
+                var sellOrder = incomingOrder.Side == OrderSide.Buy ? makerOrder : incomingOrder;
+
+                if (buyOrder.UserId != 0 || sellOrder.UserId != 0)
                 {
                     _tradeChannel.Writer.TryWrite(new TradeReceipt()
                     {
                         Ticker = incomingOrder.Ticker,
                         Price = matchPrice,
                         Quantity = tradeQty,
-                        BuyerId = (incomingOrder.Side == OrderSide.Buy) ? incomingOrder.OrderId : makerOrder.OrderId,
-                        SellerId = (incomingOrder.Side == OrderSide.Buy) ? makerOrder.OrderId : incomingOrder.OrderId,
+                        BuyOrderId  = buyOrder.UserId  != 0 ? buyOrder.OrderId  : null,
+                        SellOrderId = sellOrder.UserId != 0 ? sellOrder.OrderId : null,
+                        BuyerUserId = buyOrder.UserId,
+                        SellerUserId = sellOrder.UserId,
+                        BuyLimitPrice = buyOrder.Price,
+                        SellLimitPrice = sellOrder.Price,
                         TradeTime = DateTime.Now
                     });
 
-                    long buyerUserId  = incomingOrder.Side == OrderSide.Buy ? incomingOrder.UserId : makerOrder.UserId;
-                    long sellerUserId = incomingOrder.Side == OrderSide.Buy ? makerOrder.UserId : incomingOrder.UserId;
-                    _pushChannel.Writer.TryWrite(BuildTradePush(buyerUserId,  incomingOrder.Ticker, OrderSide.Buy,  matchPrice, tradeQty));
-                    _pushChannel.Writer.TryWrite(BuildTradePush(sellerUserId, incomingOrder.Ticker, OrderSide.Sell, matchPrice, tradeQty));
+                    // TargetUserId 0은 전체 broadcast이므로 시스템 쪽에는 체결 푸시를 보내지 않는다
+                    if (buyOrder.UserId != 0)
+                        _pushChannel.Writer.TryWrite(BuildTradePush(buyOrder.UserId,  incomingOrder.Ticker, OrderSide.Buy,  matchPrice, tradeQty));
+                    if (sellOrder.UserId != 0)
+                        _pushChannel.Writer.TryWrite(BuildTradePush(sellOrder.UserId, incomingOrder.Ticker, OrderSide.Sell, matchPrice, tradeQty));
                 }
 
                 if (makerOrder.ExecutedQuantity == makerOrder.Quantity)

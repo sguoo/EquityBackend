@@ -44,27 +44,12 @@ class Program
 
             server.Start();
 
+            // 체결 기록 + 정산 — 영수증 1건당 트랜잭션 1개 (TradeService.SettleTradeAsync)
             _ = Task.Run(async () =>
             {
                 await foreach (var receipt in engine.TradeReader.ReadAllAsync())
                 {
-                    var tradeDbManager = new DbManager();
-                    try
-                    {
-                        await tradeDbManager.DbConnection();
-                        await tradeDbManager._tradeRepo.InsertTaskAsync(receipt);
-
-                        await tradeDbManager.CommitAsync();
-                    }
-                    catch (Exception e)
-                    {
-                        Console.WriteLine($"영수증 오류: {e.Message}");
-                        await tradeDbManager.RollbackAsync();
-                    }
-                    finally
-                    {
-                        await tradeDbManager.DisposeAsync();
-                    }
+                    await PersistTradeAsync(receipt);
                 }
             });
 
@@ -112,6 +97,34 @@ class Program
             server.Stop();
         }
 
+    }
+
+    // 일시적 DB 오류(연결 끊김 등)에 대비해 몇 번 재시도한다. 트랜잭션 단위라 재시도해도 중복 반영되지 않는다.
+    static async Task PersistTradeAsync(TradeReceipt receipt)
+    {
+        const int maxAttempts = 3;
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await new TradeService(new DbManager()).SettleTradeAsync(receipt);
+                return;
+            }
+            catch (Exception e)
+            {
+                if (attempt >= maxAttempts)
+                {
+                    // 여기까지 오면 메모리 호가창과 DB가 어긋난다 — 수동 복구할 수 있도록 영수증 전체를 남긴다
+                    Console.WriteLine(
+                        $"[Trade] 체결 저장 최종 실패: ticker={receipt.Ticker} price={receipt.Price} qty={receipt.Quantity} " +
+                        $"buyOrder={receipt.BuyOrderId?.ToString() ?? "SYSTEM"} sellOrder={receipt.SellOrderId?.ToString() ?? "SYSTEM"} " +
+                        $"buyer={receipt.BuyerUserId} seller={receipt.SellerUserId} at={receipt.TradeTime:O} — {e.Message}");
+                    return;
+                }
+                Console.WriteLine($"[Trade] 체결 저장 실패({attempt}/{maxAttempts}), 재시도: {e.Message}");
+                await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt));
+            }
+        }
     }
 
     static async Task TrySendAsync(NetworkStream stream, byte[] frame)

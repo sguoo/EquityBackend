@@ -32,7 +32,9 @@ SET quantity = Inventory.quantity + @amount;";
 UPDATE Inventory SET locked_quantity = Inventory.locked_quantity + @amount
 WHERE user_id = @userId AND ticker = @ticker;";
              
-             await _db.ExecuteAsync(sql, new {UserId = userId, Ticker = ticker, Amount =  amount}, transaction: _trx);
+             int affected = await _db.ExecuteAsync(sql, new {UserId = userId, Ticker = ticker, Amount =  amount}, transaction: _trx);
+             if (affected != 1)
+                 throw new InvalidOperationException($"묶인 보유 수량 갱신 대상이 없습니다: {userId}/{ticker}");
     }
 public async Task<int> GetInventoryQuantity(long userId, string ticker)
     {
